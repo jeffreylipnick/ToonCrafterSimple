@@ -323,7 +323,7 @@ class Image2Video:
 
     def download_model(self, fp16: bool = False) -> str:
         if fp16:
-            return "models/tooncrafter_512_interp-pruned-fp16.safetensors"
+            return "/home/workspace/models/tooncrafter_512_interp-pruned-fp16.safetensors"
             # return hf_hub_download(
                 # "Kijai/DynamiCrafter_pruned", "tooncrafter_512_interp-fp16.safetensors"
             # )
