@@ -6,17 +6,20 @@ import torch
 import torch.utils.checkpoint as tckpt
 from torch import Tensor, Size, nn
 
-def noise_like(shape: Size, device: torch.device, repeat: bool=False) -> Tensor:
+
+def noise_like(shape: Size, device: torch.device, repeat: bool = False) -> Tensor:
     if not repeat:
         return torch.randn(shape, device=device)
     return torch.randn(*shape[1:]).expand(*shape)
+
 
 def extract_into_tensor(a: Tensor, t: Tensor, x_shape: Size) -> Tensor:
     b, *_ = t.shape
     out = a.gather(-1, t)
     return out.reshape(b, *((1,) * (len(x_shape) - 1)))
 
-def checkpoint(f, *a, should_ckpt: bool=False, **k):
+
+def checkpoint(f, *a, should_ckpt: bool = False, **k):
     ## implementation tricks: because checkpointing doesn't support non-tensor (e.g. None or scalar) arguments
     while a[-1] is None:
         a = a[:-1]
@@ -25,12 +28,12 @@ def checkpoint(f, *a, should_ckpt: bool=False, **k):
         return tckpt.checkpoint(w, *a, use_reentrant=False)
     return w(*a)
 
+
 def zero_module(m: nn.Module):
     # Zero out the parameters of a module and return it.
     for p in m.parameters():
         p.detach().zero_()
     return m
-
 
 
 def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
@@ -45,7 +48,9 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     assert not repeat_only
     half = dim // 2
     freqs = torch.exp(
-        -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
+        -math.log(max_period)
+        * torch.arange(start=0, end=half, dtype=torch.float32)
+        / half
     ).to(device=timesteps.device)
     args = timesteps[:, None].float() * freqs[None]
     embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
@@ -54,19 +59,30 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     return embedding
 
 
-def make_beta_schedule(schedule, n_timestep, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
+def make_beta_schedule(
+    schedule, n_timestep, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3
+):
     assert schedule == "linear"
-    betas = torch.linspace(linear_start ** 0.5, linear_end ** 0.5, n_timestep, dtype=torch.float64) ** 2
+    betas = (
+        torch.linspace(
+            linear_start**0.5, linear_end**0.5, n_timestep, dtype=torch.float64
+        )
+        ** 2
+    )
     return betas.cpu().numpy()
 
 
-def make_ddim_timesteps(ddim_discr_method, num_ddim_timesteps, num_ddpm_timesteps, verbose=False):
-    assert ddim_discr_method == 'uniform_trailing'
+def make_ddim_timesteps(
+    ddim_discr_method, num_ddim_timesteps, num_ddpm_timesteps, verbose=False
+):
+    assert ddim_discr_method == "uniform_trailing"
     c = num_ddpm_timesteps / num_ddim_timesteps
-    ddim_timesteps = np.flip(np.round(np.arange(num_ddpm_timesteps, 0, -c))).astype(np.int64)
+    ddim_timesteps = np.flip(np.round(np.arange(num_ddpm_timesteps, 0, -c))).astype(
+        np.int64
+    )
     steps_out = ddim_timesteps - 1
     if verbose:
-        print(f'Selected timesteps for ddim sampler: {steps_out}')
+        print(f"Selected timesteps for ddim sampler: {steps_out}")
     return steps_out
 
     # if ddim_discr_method == 'uniform':
@@ -85,11 +101,17 @@ def make_ddim_sampling_parameters(alphacums, ddim_timesteps, eta, verbose=False)
     alphas_prev = np.asarray([alphacums[0]] + alphacums[ddim_timesteps[:-1]].tolist())
 
     # according the formula provided in https://arxiv.org/abs/2010.02502
-    sigmas = eta * np.sqrt((1 - alphas_prev) / (1 - alphas) * (1 - alphas / alphas_prev))
+    sigmas = eta * np.sqrt(
+        (1 - alphas_prev) / (1 - alphas) * (1 - alphas / alphas_prev)
+    )
     if verbose:
-        print(f'Selected alphas for ddim sampler: a_t: {alphas}; a_(t-1): {alphas_prev}')
-        print(f'For the chosen value of eta, which is {eta}, '
-              f'this results in the following sigma_t schedule for ddim sampler {sigmas}')
+        print(
+            f"Selected alphas for ddim sampler: a_t: {alphas}; a_(t-1): {alphas_prev}"
+        )
+        print(
+            f"For the chosen value of eta, which is {eta}, "
+            f"this results in the following sigma_t schedule for ddim sampler {sigmas}"
+        )
     return sigmas, alphas, alphas_prev
 
 
@@ -133,15 +155,17 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
     Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_text = noise_pred_text.std(
+        dim=list(range(1, noise_pred_text.ndim)), keepdim=True
+    )
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
     # rescale the results from guidance (fixes overexposure)
     noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    noise_cfg = (
+        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    )
     return noise_cfg
-
-
 
 
 class DiagonalGaussianDistribution(object):
@@ -153,38 +177,44 @@ class DiagonalGaussianDistribution(object):
         self.std = torch.exp(0.5 * self.logvar)
         self.var = torch.exp(self.logvar)
         if self.deterministic:
-            self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
+            self.var = self.std = torch.zeros_like(self.mean).to(
+                device=self.parameters.device
+            )
 
     def sample(self, noise=None):
         if noise is None:
             noise = torch.randn(self.mean.shape)
-        
+
         x = self.mean + self.std * noise.to(device=self.parameters.device)
         return x
 
     def kl(self, other=None):
         if self.deterministic:
-            return torch.Tensor([0.])
+            return torch.Tensor([0.0])
         else:
             if other is None:
-                return 0.5 * torch.sum(torch.pow(self.mean, 2)
-                                       + self.var - 1.0 - self.logvar,
-                                       dim=[1, 2, 3])
+                return 0.5 * torch.sum(
+                    torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
+                    dim=[1, 2, 3],
+                )
             else:
                 return 0.5 * torch.sum(
                     torch.pow(self.mean - other.mean, 2) / other.var
-                    + self.var / other.var - 1.0 - self.logvar + other.logvar,
-                    dim=[1, 2, 3])
+                    + self.var / other.var
+                    - 1.0
+                    - self.logvar
+                    + other.logvar,
+                    dim=[1, 2, 3],
+                )
 
-    def nll(self, sample, dims=[1,2,3]):
+    def nll(self, sample, dims=[1, 2, 3]):
         if self.deterministic:
-            return torch.Tensor([0.])
+            return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
         return 0.5 * torch.sum(
             logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
-            dim=dims)
+            dim=dims,
+        )
 
     def mode(self):
         return self.mean
-
-
